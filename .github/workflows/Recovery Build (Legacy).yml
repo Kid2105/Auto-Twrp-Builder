@@ -6,15 +6,15 @@ on:
       IMG_URL:
         description: 'IMG_ URL'
         required: true
-        default: 'https://github.com/KoCleo/Auto-Twrp-Builder/raw/master/recovery.img'
+        default: 'https://github.com'
       MANIFEST_URL:
         description: 'MANIFEST_URL (if want to use SSH keys, use git@github.com:XXXXX)'
         required: true
-        default: 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni'
+        default: 'https://github.com'
       MANIFEST_BRANCH:
         description: 'MANIFEST_BRANCH'
         required: true
-        default: 'twrp-8.1'
+        default: 'twrp-12.1'
       BUILD_TARGET:
         description: 'BUILD_TARGET'
         required: true
@@ -35,21 +35,20 @@ jobs:
         echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}.img"
         echo "::endgroup::"
 
-    # You might want to Checkout your repo first, but not mandatory
     - name: Check Out
       uses: actions/checkout@v3
-    # Cleanup The Actions Workspace Using Custom Composite Run Actions
+
     - name: Cleanup
       uses: rokibhasansagar/slimhub_actions@main
-      # That's it! Now use your normal steps
 
     - name: Prepare the environment
       run: |
         sudo apt update
         sudo apt -y upgrade
-        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python3
-        sudo apt -y install python3 python3-pip cpio wget
+        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python3 python-is-python3
+        sudo apt -y install python3-pip cpio wget
         pip3 install twrpdtgen
+
     - name: Install OpenJDK
       uses: actions/setup-java@v3
       with:
@@ -66,7 +65,7 @@ jobs:
     - name: Install repo
       run: |
         mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        curl https://googleapis.com > ~/bin/repo
         chmod a+x ~/bin/repo
         sudo ln -sf ~/bin/repo /usr/bin/repo
 
@@ -88,11 +87,11 @@ jobs:
         if_true: twrp
         if_false: omni
 
-
     - name: Repo Sync
       run: |
         repo sync -j$(nproc --all) --force-sync
       working-directory: workspace
+
     - name: Generate Device Tree
       run: |
         wget ${{ github.event.inputs.IMG_URL }}
@@ -112,19 +111,15 @@ jobs:
       with:
         swap-size-gb: 12
 
-    - name: Switch to Python2
-      run: |
-        sudo apt -y install python
-        sudo rm -rf /usr/bin/python
-        sudo ln -s /usr/bin/python2 /usr/bin/python
-        # sudo ln -s /usr/bin/python3 /usr/bin/python3
-      continue-on-error: true
-
     - name: Building recovery
       run: |
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ steps.gdt.outputs.MAKEFILE_NAME }}-eng
+        sed -i 's/omni_/twrp_/g' device/*/*/*.mk device/*/*/AndroidProducts.mk
+        sed -i 's|vendor/omni|vendor/twrp|g' device/*/*/*.mk
+        for f in device/*/*/omni_*.mk; do [ -e "$f" ] && mv "$f" "${f/omni_/twrp_}"; done
+        MAKEFILE_NEW=$(echo "${{ steps.gdt.outputs.MAKEFILE_NAME }}" | sed 's/omni_/twrp_/g')
+        lunch ${MAKEFILE_NEW}-eng
         make clean
         make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
       working-directory: ${{ steps.pwd.outputs.workspace-folder }}
